@@ -279,6 +279,7 @@ app.get("/api/complaints/count/:userId", async (req, res) => {
   }
 });
 // ------------------------------------------
+// ------------------------------------------
 // SAVE INTERNAL NOTE (private to admin/staff)
 app.post("/api/complaints/:id/internal-note", async (req, res) => {
   const { id } = req.params;
@@ -307,7 +308,7 @@ app.post("/api/complaints/:id/internal-note", async (req, res) => {
 app.put("/api/complaints/:id/reply", async (req, res) => {
   try {
     const id = req.params.id;
-    const { admin_reply } = req.body;
+    const { admin_reply,adminId } = req.body;
 
     const complaint = await Complaint.findByPk(id);
     if (!complaint) {
@@ -319,6 +320,14 @@ app.put("/api/complaints/:id/reply", async (req, res) => {
     complaint.public_replied_at = new Date(); // save current date & time
 
     await complaint.save();
+    
+await Timeline.create({
+  complaint_id: id,
+  status: "Public Reply",
+  comment: `Admin replied: ${admin_reply}`,
+  actor_type: "admin",
+  actor_id: adminId|| null
+});
 
     res.status(200).json({
       message: "Admin reply saved successfully",
@@ -330,6 +339,7 @@ app.put("/api/complaints/:id/reply", async (req, res) => {
     res.status(500).json({ message: "Error saving reply" });
   }
 });
+
 // ---------------- Admin: all complaints ----------------
 app.get("/api/complaints", async (req, res) => {
   try {
