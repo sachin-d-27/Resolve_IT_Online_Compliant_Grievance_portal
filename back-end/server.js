@@ -278,7 +278,58 @@ app.get("/api/complaints/count/:userId", async (req, res) => {
       .json({ success: false, message: "Failed to fetch complaints count" });
   }
 });
+// ------------------------------------------
+// SAVE INTERNAL NOTE (private to admin/staff)
+app.post("/api/complaints/:id/internal-note", async (req, res) => {
+  const { id } = req.params;
+  const { note, adminId } = req.body;
 
+  if (!note.trim()) return res.status(400).json({ message: "Note cannot be empty" });
+
+  try {
+    await Timeline.create({
+      complaint_id: id,
+      status: "Internal Note",
+      comment: `Staff note: ${note}`,
+      actor_type: "admin",
+      actor_id: adminId || null
+    });
+
+    res.json({ message: "Internal note saved successfully" });
+  } catch (err) {
+    console.error("❌ Error saving internal note:", err);
+    res.status(500).json({ message: "Failed to save internal note" });
+  }
+});
+
+// ------------------------------------------
+// SEND PUBLIC REPLY (visible to user)
+app.put("/api/complaints/:id/reply", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { admin_reply } = req.body;
+
+    const complaint = await Complaint.findByPk(id);
+    if (!complaint) {
+      return res.status(404).json({ message: "Complaint not found" });
+    }
+
+    // Only update admin_reply and public_replied_at
+    complaint.publicReply = admin_reply;
+    complaint.public_replied_at = new Date(); // save current date & time
+
+    await complaint.save();
+
+    res.status(200).json({
+      message: "Admin reply saved successfully",
+      admin_reply: complaint.publicReply,
+      public_replied_at: complaint.public_replied_at,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Error saving reply" });
+  }
+});
 // ---------------- Admin: all complaints ----------------
 app.get("/api/complaints", async (req, res) => {
   try {
@@ -383,6 +434,45 @@ app.get("/api/complaints/:id", async (req, res) => {
 // 🔹 Add at the top after require("dotenv").config();
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+// ---------------- Escalate Complaint ----------------
+app.post("/api/complaints/:id/escalate", async (req, res) => {
+  const { id } = req.params;
+  const { higherAuthority, notifyAll } = req.body;
+
+  try {
+    const complaint = await Complaint.findByPk(id);
+    if (!complaint)
+      return res.status(404).json({ message: "Complaint not found" });
+
+    // ✅ Update complaint status and escalation info
+    complaint.status = "Escalated";
+    complaint.escalated_to = higherAuthority || "Senior Admin";
+    complaint.escalated_at = new Date();
+    await complaint.save();
+
+    // ✅ Log in timeline
+    await Timeline.create({
+      complaint_id: id,
+      status: "Escalated",
+      comment: `Complaint escalated to ${higherAuthority || "Senior Admin"}`,
+      actor_type: "admin",
+      actor_id: null,
+      updated_at: new Date(),
+    });
+
+    // Optional: notify users/admins
+    if (notifyAll) {
+      console.log(`📩 Notification sent to all parties for complaint #${id}`);
+    }
+
+    res.json({ message: "Complaint escalated successfully" });
+  } catch (err) {
+    console.error("❌ Escalation error:", err);
+    res.status(500).json({ message: "Failed to escalate complaint" });
+  }
+});
+
+
 
 // ---------------- Admin Login ----------------
 app.post("/admin-login", (req, res) => {

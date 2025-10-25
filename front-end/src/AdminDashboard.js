@@ -95,7 +95,7 @@ const AdminComplaints = () => {
           label="Logout"
           onClick={() => {
             localStorage.clear();
-            navigate("/login");
+            navigate("/home");
           }}
         />
       </div>
